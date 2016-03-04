@@ -1,0 +1,23 @@
+{
+	"API_key" : "TELEGRAM API KEY",
+	"user_settings" : [
+		{
+			"URL" : "JIRA URL",
+			"login" : "JIRA LOGIN",
+			"password" : "JIRA PASSWORD",
+			"chatId" : "TELEGRAM CHAT ID",
+			"admins" : [
+				"NICKNAME OF ADMIN"
+			],
+			"projects" : [
+				"PROJECT TO LOOK"
+			],
+			"types" : [
+				"TYPES", "TO", "LOOK"
+			],
+			"statuses" : [
+				"STATUSES", "TO", "LOOK"
+			]
+		}
+	]
+}
