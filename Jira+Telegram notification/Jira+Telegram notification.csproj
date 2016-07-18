@@ -63,6 +63,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Commands\FeaturesCommands.cs" />
+    <Compile Include="Commands\HelpCommands.cs" />
+    <Compile Include="Commands\ICommands.cs" />
     <Compile Include="Commands\SettingCommands.cs" />
     <Compile Include="Commands\StatusCommands.cs" />
     <Compile Include="Commands\ProjectCommands.cs" />

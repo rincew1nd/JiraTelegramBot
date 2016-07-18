@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jira_Telegram_notification.Commands;
@@ -12,6 +13,7 @@ using Newtonsoft.Json;
 using Telegram;
 using Telegram.Bot.Types;
 using TechTalk.JiraRestClient;
+using Telegram.Bot;
 
 namespace Jira_Telegram_notification
 {
@@ -19,7 +21,7 @@ namespace Jira_Telegram_notification
     {
         private static List<JiraClient> _jiraClients;
         private static Dictionary<long, ChatsSettings> _chatsSettings;
-        private static Telegram.Bot.Api bot;
+        private static Api bot;
         private static ExternalSettings externalSettings;
         
         static void Main(string[] args)
@@ -45,7 +47,7 @@ namespace Jira_Telegram_notification
             var featuresCommands = new FeaturesCommands(bot);
             var projectCommands = new ProjectCommands(bot);
             var settingCommands = new SettingCommands(bot);
-
+            var helpCommands = new HelpCommands(bot);
 
             var offset = 0;
             while (true)
@@ -67,61 +69,16 @@ namespace Jira_Telegram_notification
                 {
                     offset = up.Id + 1;
 
-                    if (up.Message.Text != null)
+                    if (up.Message.Text != null && up.Message.Type == MessageType.TextMessage)
                     {
-                        var splitedMessage = up.Message.Text.Split(' ');
-                        var channel = up.Message.Chat.Id;
-
-                        //if (availableCommands.Contains(splitedMessage[0]))
-                        //{
-                        //    if (_chatsSettings.ContainsKey(channel) &&
-                        //        _chatsSettings[channel].GetOperating() &&
-                        //        !up.Message.Text.Contains("/help"))
-                        //        if (!_chatsSettings[channel].GetLoaded())
-                        //        {
-                        //            statusCommands.StatusCommandsParse(_chatsSettings, up);
-                        //            typeCommands.TypeCommandsParse(_chatsSettings, up);
-                        //            featuresCommands.StatusCommandsParse(_chatsSettings, up);
-                        //        }
-                        //        else
-                        //        {
-                        //            if (_chatsSettings[channel].GetAllTasks().Count == 0)
-                        //                await
-                        //                    bot.SendTextMessage(channel,
-                        //                        "Подождите пока задачи загрузятся. Пока ни одна задача не загрузилась");
-                        //            else
-                        //                await
-                        //                    bot.SendTextMessage(channel, "Подождите пока задачи загрузятся. Последняя добавленная задача - " +
-                        //                        _chatsSettings[channel].GetAllTasks().Last().Key + " от " + _chatsSettings[channel].GetLastUpdateTime());
-                        //        }
-                        //
-                        //    if (up.Message.Type == MessageType.TextMessage)
-                        //    {
-                        //        if (up.Message.Text.Contains("/help"))
-                        //        {
-                        //            await bot.SendTextMessage(channel, "Комманды:\n" +
-                        //                                           "/start - запуск сервиса оповещений\n" +
-                        //                                           "/set mainchannel - переключение для нескольких каналов(чатов)\n" +
-                        //                                           "/available (type/status) - просмотр статусов или типов тасков, которые доступны для добавления в рассылку\n" +
-                        //                                           "/look (type/status) - просмотр статусов или типов тасков, которые попадают в рассылку\n" +
-                        //                                           "/add (status/type) %имя% - добавление типов или статусов в оповещения\n" +
-                        //                                           "/delete (status/type) %имя% - удаление типов или статусов из оповещений\n" +
-                        //                                           "/status FN-4324 - статус задачи");
-                        //        }
-                        //    }
-                        //}
-
-
-                        if (up.Message.Type == MessageType.TextMessage)
+                        settingCommands.Parse(externalSettings, ref _chatsSettings, up);
+                        if (_chatsSettings.Count != 0)
                         {
-                            settingCommands.StatusCommandsParse(externalSettings, ref _chatsSettings, up);
-                            if (_chatsSettings.Count != 0)
-                            {
-                                statusCommands.StatusCommandsParse(ref _chatsSettings, up);
-                                typeCommands.TypeCommandsParse(ref _chatsSettings, up);
-                                featuresCommands.StatusCommandsParse(ref _chatsSettings, up);
-                                projectCommands.Parse(ref _chatsSettings, up);
-                            }
+                            statusCommands.Parse(ref _chatsSettings, up);
+                            typeCommands.Parse(ref _chatsSettings, up);
+                            featuresCommands.Parse(ref _chatsSettings, up);
+                            projectCommands.Parse(ref _chatsSettings, up);
+                            helpCommands.Parse(ref _chatsSettings, up);
                         }
                     }
                 }
@@ -145,7 +102,8 @@ namespace Jira_Telegram_notification
                                 var issues =
                                     chatSettings.GetJira()
                                         .EnumerateIssuesByQuery(
-                                            "project = " + project + " AND issuetype = " + type + " AND updated >= -1m",
+                                            "project = " + project + " AND issuetype = " + type +
+                                            " AND updated >= -1m",
                                             null, 0);
                                 foreach (var issue in issues)
                                 {
@@ -153,64 +111,72 @@ namespace Jira_Telegram_notification
                                     {
                                         if (!chatSettings.GetAllTasks().ContainsKey(issue.key))
                                         {
-                                            chatSettings.GetAllTasks().Add(issue.key, issue.fields.status.name.ToLower());
+                                            chatSettings.GetAllTasks()
+                                                .Add(issue.key, issue.fields.status.name.ToLower());
 
-                                            await bot.SendTextMessage(chatSettings.GetChannelId(),
-                                                chatSettings.GetJira().GetServerInfo().baseUrl + "/browse/" + issue.key +
-                                                "\n" +
-                                                "(" + issue.fields.issuetype.name + " | " + issue.fields.priority.name +
-                                                ") " + issue.fields.summary + "\n" +
-                                                "Находится в статусе " + issue.fields.status.name + "\n" +
-                                                "Лейблы: " +
-                                                ((issue.fields.labels.Count != 0)
-                                                    ? issue.fields.labels.Aggregate((curr, next) => curr + ", " + next)
-                                                    : "Нет"));
+                                            await bot.SendTextMessage(
+                                                chatSettings.GetChannelId(),
+                                                ConstrunctMessage(chatSettings, issue)
+                                            );
 
-                                            Console.WriteLine(chatSettings.GetJira().GetServerInfo().baseUrl + "| " +
-                                                              "New watched! " + issue.key + " : " + issue.fields.status.name);
+                                            Console.WriteLine(
+                                                String.Format(
+                                                    chatSettings.GetJira().GetServerInfo().baseUrl,
+                                                    "| ", "New watched! ", issue.key, " : ",
+                                                    issue.fields.status.name
+                                                )
+                                            );
                                         }
                                         else if (
                                             !chatSettings.GetAllTasks()[issue.key].Equals(
                                                 issue.fields.status.name.ToLower()))
                                         {
-                                            await bot.SendTextMessage(chatSettings.GetChannelId(),
-                                                chatSettings.GetJira().GetServerInfo().baseUrl + "/browse/" + issue.key +
-                                                "\n" +
-                                                "(" + issue.fields.issuetype.name + " | " + issue.fields.priority.name +
-                                                ") " + issue.fields.summary + "\n" +
-                                                "Находится в статусе " + issue.fields.status.name + "\n" +
-                                                "Лейблы: " +
-                                                ((issue.fields.labels.Count != 0)
-                                                    ? issue.fields.labels.Aggregate((curr, next) => curr + ", " + next)
-                                                    : "Нет"));
+                                            await bot.SendTextMessage(
+                                                chatSettings.GetChannelId(),
+                                                ConstrunctMessage(chatSettings, issue)
+                                            );
 
-                                            chatSettings.GetAllTasks()[issue.key] = issue.fields.status.name.ToLower();
-
-                                            Console.WriteLine(chatSettings.GetJira().GetServerInfo().baseUrl + "| " +
-                                                              issue.key + " : " + chatSettings.GetAllTasks()[issue.key] +
-                                                              " -> " + issue.fields.status.name);
+                                            chatSettings.GetAllTasks()[issue.key] =
+                                                issue.fields.status.name.ToLower();
+                                            
+                                            Console.WriteLine(
+                                                String.Format(
+                                                    chatSettings.GetJira().GetServerInfo().baseUrl,
+                                                    "| ", issue.key, " : ", chatSettings.GetAllTasks()[issue.key],
+                                                    " -> ", issue.fields.status.name
+                                                )
+                                            );
                                         }
                                     }
                                     else
                                     {
                                         if (chatSettings.GetAllTasks().ContainsKey(issue.key))
                                         {
-                                            if (
-                                                !chatSettings.GetAllTasks()[issue.key].Equals(
+                                            if (!chatSettings.GetAllTasks()[issue.key].Equals(
                                                     issue.fields.status.name.ToLower()))
                                             {
-                                                Console.WriteLine(chatSettings.GetJira().GetServerInfo().baseUrl + "| " +
-                                                                  issue.key + " : " + chatSettings.GetAllTasks()[issue.key] +
-                                                                  " -> " + issue.fields.status.name);
-                                                chatSettings.GetAllTasks()[issue.key] = issue.fields.status.name.ToLower();
+                                                Console.WriteLine(
+                                                    String.Format(
+                                                        chatSettings.GetJira().GetServerInfo().baseUrl,
+                                                        "| ", issue.key, " : ", chatSettings.GetAllTasks()[issue.key],
+                                                        " -> ", issue.fields.status.name
+                                                    )
+                                                );
+                                                chatSettings.GetAllTasks()[issue.key] =
+                                                    issue.fields.status.name.ToLower();
                                             }
                                         }
                                         else
                                         {
-                                            chatSettings.GetAllTasks().Add(issue.key, issue.fields.status.name.ToLower());
-                                            Console.WriteLine(chatSettings.GetJira().GetServerInfo().baseUrl + "| " +
-                                                              "New not watched! " + issue.key + " : " +
-                                                              issue.fields.status.name);
+                                            chatSettings.GetAllTasks()
+                                                .Add(issue.key, issue.fields.status.name.ToLower());
+                                            Console.WriteLine(
+                                                String.Format(
+                                                    chatSettings.GetJira().GetServerInfo().baseUrl,
+                                                    "| ", "New not watched! ", issue.key, " : ",
+                                                    issue.fields.status.name
+                                                )
+                                            );
                                         }
                                     }
                                 }
@@ -218,15 +184,15 @@ namespace Jira_Telegram_notification
                         }
                     }
                 }
-
-                await Task.Delay(10000);
-                Task.Run(async () => await RunSearching());
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message + "\n" + ex.StackTrace);
-                Task.Delay(10000);
-                Task.Run(async () => await RunSearching());
+                Console.WriteLine(ex.Message + Environment.NewLine + ex.StackTrace);
+            }
+            finally
+            {
+                await Task.Delay(10000);
+                await Task.Run(async () => await RunSearching());
             }
         }
 
@@ -241,78 +207,57 @@ namespace Jira_Telegram_notification
                     foreach (var issue in chatSettings.GetJira().GetIssues(project, issueType))
                         if (!chatSettings.GetAllTasks().ContainsKey(issue.key))
                             chatSettings.AddTask(issue.key, issue.fields.status.name.ToLower());
-                    Console.Write(chatSettings.GetAllTasks().Last().Key + " " + chatSettings.GetAllTasks().First().Key);
+                    Console.Write(
+                        String.Format(chatSettings.GetAllTasks().Last().Key,
+                        " ", chatSettings.GetAllTasks().First().Key)
+                    );
                 }
 
             chatSettings.StopLoading();
-            Console.WriteLine("Закончил загрузку всех задач " + chatSettings.GetJira().GetServerInfo().baseUrl + " " + chatSettings.GetChannelId());
+            Console.WriteLine(
+                $"Закончил загрузку всех задач {chatSettings.GetJira().GetServerInfo().baseUrl} " +
+                $"{chatSettings.GetChannelId()}"
+            );
 
             if (externalSettings.user_settings.Find(z => z.chatId == chatSettings.GetChannelId()) != null)
                 chatSettings.StartOperating();
             else
-                await bot.SendTextMessage(chatSettings.GetChannelId(), "Загрузка задач закончена!\n" +
-                    "Теперь можно указать какие статусы нужно включить в оповещания (/add status \"string\"):\n" +
-                    ((chatSettings.GetAvailableStatuses().Values.Count != 0) ? chatSettings.GetAvailableStatuses().Values.Aggregate((current, next) => current + ", " + next) : ""));
+                await bot.SendTextMessage(
+                    chatSettings.GetChannelId(),
+                    "Загрузка задач закончена!" + Environment.NewLine +
+                    "Теперь можно указать какие статусы нужно включить в оповещания (/add status \"string\"):" + Environment.NewLine +
+                    ((chatSettings.GetAvailableStatuses().Values.Count != 0) ?
+                        chatSettings.GetAvailableStatuses().Values.Aggregate((current, next) => current + ", " + next) : 
+                        ""));
         }
 
-        #region Не работает :(
-        //static async Task FindUpdates(ChatsSettings chatSettings)
-        //{
-        //    Console.WriteLine("Voshel");
-        //    var issues = (from i in chatSettings.GetJira().Issues
-        //                  where i.Updated >= chatSettings.GetLastUpdateTime()
-        //                  select i).Take(10);
-        //    foreach (var issue in issues)
-        //    {
-        //        if (issue.Updated > chatSettings.GetLastUpdateTime() && chatSettings.GetTypes().Contains(issue.Type.Name.ToLower()))
-        //        {
-        //            if (chatSettings.GetStatuses().Contains(issue.fields.status.name.ToLower()))
-        //            {
-        //                if (!chatSettings.GetAllTasks().ContainsKey(issue.key))
-        //                {
-        //                    chatSettings.GetAllTasks().Add(issue.key, issue.fields.status.name);
-        //    
-        //                    await bot.SendTextMessage(chatSettings.GetChannelId(),
-        //                        Utils.GetSettings("Server") + "browse/" + issue.Key + "\n" +
-        //                        "(" + issue.Type.Name + " | " + issue.Priority.Name + ") " + issue.Summary + "\n" +
-        //                        "Находится в статусе " + issue.fields.status.name);
-        //                    Console.WriteLine("New watched! " + issue.key + " : " + issue.fields.status.name);
-        //                }
-        //                else if (chatSettings.GetAllTasks()[issue.key] != issue.fields.status.name)
-        //                {
-        //                    Console.WriteLine(issue.key + " : " + chatSettings.GetAllTasks()[issue.key] + " -> " + issue.fields.status.name);
-        //    
-        //                    if (issue.Updated != null && issue.Updated >= chatSettings.GetLastUpdateTime())
-        //                        chatSettings.SetLastUpdateTime((DateTime)issue.Updated);
-        //    
-        //                    await bot.SendTextMessage(chatSettings.GetChannelId(),
-        //                        Utils.GetSettings("Server") + "browse/" + issue.Key + "\n" +
-        //                        "(" + issue.Type.Name + " | " + issue.Priority.Name + ") " + issue.Summary + "\n" +
-        //                        "Находится в статусе " + issue.fields.status.name);
-        //    
-        //                    chatSettings.GetAllTasks()[issue.key] = issue.fields.status.name;
-        //                }
-        //            }
-        //            else
-        //            {
-        //                if (chatSettings.GetAllTasks().ContainsKey(issue.key))
-        //                {
-        //                    if (!chatSettings.GetAllTasks()[issue.key].Equals(issue.fields.status.name))
-        //                    {
-        //                        Console.WriteLine(issue.key + " : " + chatSettings.GetAllTasks()[issue.key] +
-        //                                          " -> " + issue.fields.status.name);
-        //                        chatSettings.GetAllTasks()[issue.key] = issue.fields.status.name;
-        //                    }
-        //                }
-        //                else
-        //                {
-        //                    Console.WriteLine("New not watched! " + issue.key + " : " + issue.fields.status.name);
-        //                    chatSettings.GetAllTasks().Add(issue.key, issue.fields.status.name);
-        //                }
-        //            }
-        //        }
-        //    }
-        //}
-        #endregion
+        private static string ConstrunctMessage(ChatsSettings chatSettings, Issue issue)
+        {
+            StringBuilder result = new StringBuilder();
+            result.Append(chatSettings.GetJira().GetServerInfo().baseUrl);
+            result.Append("/browse/");
+            result.Append(issue.key);
+            result.Append(Environment.NewLine);
+
+            result.Append("(");
+            result.Append(issue.fields.issuetype.name);
+            result.Append(" | ");
+            result.Append(issue.fields.priority.name);
+            result.Append(") ");
+            result.Append(issue.fields.summary);
+            result.Append(Environment.NewLine);
+
+            result.Append("Находится в статусе ");
+            result.Append(issue.fields.status.name);
+            result.Append(Environment.NewLine);
+
+            result.Append("Лейблы: ");
+            if (issue.fields.labels.Count != 0)
+                result.Append(issue.fields.labels.Aggregate((curr, next) => curr + ", " + next));
+            else
+                result.Append("Нет");
+
+            return result.ToString();
+        }
     }
 }

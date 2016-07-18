@@ -4,13 +4,14 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace Jira_Telegram_notification.Commands
 {
-    class TypeCommands
+    class TypeCommands : ICommands
     {
-        private Telegram.Bot.Api _bot;
+        private Api _bot;
         private Regex pattern;
 
         public TypeCommands(Telegram.Bot.Api bot)
@@ -19,7 +20,7 @@ namespace Jira_Telegram_notification.Commands
             pattern = new Regex("\"[^\"]*\"");
         }
 
-        public void TypeCommandsParse(ref Dictionary<long, ChatsSettings> chatsSettings, Update up)
+        public void Parse(ref Dictionary<long, ChatsSettings> chatsSettings, Update up)
         {
             var match = pattern.Match(up.Message.Text).ToString();
             if (match.Length > 2) match = match.Replace("\"", "");

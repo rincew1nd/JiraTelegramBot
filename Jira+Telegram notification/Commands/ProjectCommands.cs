@@ -4,16 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace Jira_Telegram_notification.Commands
 {
-    class ProjectCommands
+    class ProjectCommands : ICommands
     {
-        private Telegram.Bot.Api _bot;
+        private Api _bot;
         private Regex pattern;
 
-        public ProjectCommands(Telegram.Bot.Api bot)
+        public ProjectCommands(Api bot)
         {
             _bot = bot;
             pattern = new Regex("\"[^\"]*\"");

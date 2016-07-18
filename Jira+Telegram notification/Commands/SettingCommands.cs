@@ -5,22 +5,23 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jira_Telegram_notification.Settings;
 using TechTalk.JiraRestClient;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace Jira_Telegram_notification.Commands
 {
     class SettingCommands
     {
-        private Telegram.Bot.Api _bot;
+        private Api _bot;
         private Regex pattern;
 
-        public SettingCommands(Telegram.Bot.Api bot)
+        public SettingCommands(Api bot)
         {
             _bot = bot;
             pattern = new Regex("\"[^\"]*\"");
         }
 
-        public void StatusCommandsParse(ExternalSettings externalSettings, ref Dictionary<long, ChatsSettings> chatsSettings, Update up)
+        public void Parse(ExternalSettings externalSettings, ref Dictionary<long, ChatsSettings> chatsSettings, Update up)
         {
             var channel = up.Message.Chat.Id;
             var settings = externalSettings.user_settings.Find(z => z.chatId == channel);
