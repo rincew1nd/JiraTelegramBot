@@ -21,16 +21,15 @@ namespace Jira_Telegram_notification
     {
         private static List<JiraClient> _jiraClients;
         private static Dictionary<long, ChatsSettings> _chatsSettings;
-        private static Api bot;
-        private static ExternalSettings externalSettings;
+        private static Api _bot;
+        private static ExternalSettings _externalSettings;
         
         static void Main(string[] args)
         {
             _jiraClients = new List<JiraClient>();
             _chatsSettings = new Dictionary<long, ChatsSettings>();
-
-
-            externalSettings = JsonConvert.DeserializeObject<ExternalSettings>(Utils.ReadFile("\\Settings.json"));
+            
+            _externalSettings = JsonConvert.DeserializeObject<ExternalSettings>(Utils.ReadFile("\\Settings.json"));
 
             Task.Run(async () => await RunSearching());
             RunCommands().Wait();
@@ -38,16 +37,16 @@ namespace Jira_Telegram_notification
 
         static async Task RunCommands()
         {
-            bot = new Telegram.Bot.Api(externalSettings.API_key);
-            var me = await bot.GetMe();
+            _bot = new Telegram.Bot.Api(_externalSettings.API_key);
+            var me = await _bot.GetMe();
             System.Console.WriteLine("Greetings from " + me.Username);
 
-            var statusCommands = new StatusCommands(bot);
-            var typeCommands = new TypeCommands(bot);
-            var featuresCommands = new FeaturesCommands(bot);
-            var projectCommands = new ProjectCommands(bot);
-            var settingCommands = new SettingCommands(bot);
-            var helpCommands = new HelpCommands(bot);
+            var statusCommands = new StatusCommands(_bot);
+            var typeCommands = new TypeCommands(_bot);
+            var featuresCommands = new FeaturesCommands(_bot);
+            var projectCommands = new ProjectCommands(_bot);
+            var settingCommands = new SettingCommands(_bot);
+            var helpCommands = new HelpCommands(_bot);
 
             var offset = 0;
             while (true)
@@ -55,7 +54,7 @@ namespace Jira_Telegram_notification
                 var updates = new Update[0];
                 try
                 {
-                    updates = await bot.GetUpdates(offset);
+                    updates = await _bot.GetUpdates(offset);
                 }
                 catch (TaskCanceledException)
                 {
@@ -71,7 +70,7 @@ namespace Jira_Telegram_notification
 
                     if (up.Message.Text != null && up.Message.Type == MessageType.TextMessage)
                     {
-                        settingCommands.Parse(externalSettings, ref _chatsSettings, up);
+                        settingCommands.Parse(_externalSettings, ref _chatsSettings, up);
                         if (_chatsSettings.Count != 0)
                         {
                             statusCommands.Parse(ref _chatsSettings, up);
@@ -114,7 +113,7 @@ namespace Jira_Telegram_notification
                                             chatSettings.GetAllTasks()
                                                 .Add(issue.key, issue.fields.status.name.ToLower());
 
-                                            await bot.SendTextMessage(
+                                            await _bot.SendTextMessage(
                                                 chatSettings.GetChannelId(),
                                                 ConstrunctMessage(chatSettings, issue)
                                             );
@@ -131,7 +130,7 @@ namespace Jira_Telegram_notification
                                             !chatSettings.GetAllTasks()[issue.key].Equals(
                                                 issue.fields.status.name.ToLower()))
                                         {
-                                            await bot.SendTextMessage(
+                                            await _bot.SendTextMessage(
                                                 chatSettings.GetChannelId(),
                                                 ConstrunctMessage(chatSettings, issue)
                                             );
@@ -219,10 +218,10 @@ namespace Jira_Telegram_notification
                 $"{chatSettings.GetChannelId()}"
             );
 
-            if (externalSettings.user_settings.Find(z => z.chatId == chatSettings.GetChannelId()) != null)
+            if (_externalSettings.user_settings.Find(z => z.chatId == chatSettings.GetChannelId()) != null)
                 chatSettings.StartOperating();
             else
-                await bot.SendTextMessage(
+                await _bot.SendTextMessage(
                     chatSettings.GetChannelId(),
                     "Загрузка задач закончена!" + Environment.NewLine +
                     "Теперь можно указать какие статусы нужно включить в оповещания (/add status \"string\"):" + Environment.NewLine +
